@@ -1,0 +1,100 @@
+import serial
+import time
+import requests
+import json
+from firebase import firebase
+import mysql.connector
+from mysql.connector import Error
+from mysql.connector import errorcode
+import struct
+#import smbus
+firebase_url = 'https://arquitectura-82923.firebaseio.com/'
+#Connect to Serial Port for communication
+ser = serial.Serial('COM6', 9600, timeout=0)
+#Setup a loop to send Temperature values at fixed intervals
+#in seconds
+fixed_interval = 5
+#firebase= firebase.FirebaseApplication('https://arquitectura-82923.firebaseio.com')
+firebase= firebase.FirebaseApplication('https://arquitectura-85ce3.firebaseio.com')
+
+connection = mysql.connector.connect(host='localhost',
+							 port='3308',
+                             database='monitor',
+                             user='root',
+                             password='')
+cursor = connection.cursor(prepared=True)
+#sql_insert_query = """ INSERT INTO `new_table` (`fecha`, `hora`, `temperatura`,`humedad`, `presencia`) VALUES (%s,%s,%f,%f,%f)"""
+sql_insert_query = """ INSERT INTO `new_table` (`fecha`, `hora`,`temperatura`,`humedad`, `presencia`) VALUES (%s, %s, %s, %s, %s)"""
+#insert_tuple = (fecha, hora, temperatura)
+
+while True:
+  try:
+    # temperature value obtained from Arduino + LM35 Temp Sensor
+    # arduinoString = ser.readline()
+    # dataArray = arduinoString.decode(encoding='utf-8', errors='strict').split(',')
+    # print(dataArray)
+    # temp = float(dataArray[0])
+    cadena = ser.readline().strip()
+
+    # temperature_c = ser.readline().strip()
+    cadena = cadena.decode('utf-8')
+    print("cadena: ", cadena)
+    if (cadena == ''):
+      temperature_c = "0"
+      humedad_c = "0"
+      movim_c = "0"
+    else:
+      lista = cadena.split(',')
+      temperature_c = lista[0]
+      humedad_c = lista[1]
+      movim_c = lista[2]
+
+    # temperature_c = temperature_c.decode('utf-8')
+    # print(type(temp))
+    # if(temperature_c == ''):
+    #   temperature_c="0"
+   
+    # print(type(temperature_c))
+    # print(temperature_c)
+    temperature_c = float(temperature_c)
+    humedad_c = float(humedad_c)
+    movim_c = float(movim_c)
+    # print(type(temperature_c))
+    #temperature_c = float(temperature_c)
+
+    #current time and date
+    time_hhmmss = time.strftime('%H:%M:%S')
+    date_mmddyyyy = time.strftime('%d/%m/%Y')
+	
+    insert_tuple = (date_mmddyyyy, time_hhmmss, temperature_c, humedad_c, movim_c)
+    resultMysql  = cursor.execute(sql_insert_query, insert_tuple)
+    connection.commit()
+    print ("Record inserted successfully into python_users table")
+	
+	
+    
+    #current location name
+    temperature_location = 'Ambiente'
+    print(temperature_c, ',', humedad_c, ',', movim_c, ',', time_hhmmss, ',', date_mmddyyyy, ',', temperature_location)
+    
+    #insert record
+    #payload = {
+	#		'date':str(date_mmddyyyy),
+	#		'time':str(time_hhmmss),
+	#		'value':str(temperature_c)
+	#		}
+		
+    #result = requests.post(firebase_url + '/' + temperature_location + '/temperature.json', data=json.dumps(list(payload)))
+	#store the Host ID(provided in firebase database) in variable where you want to send the real time sensor data.
+    
+	#store the readings in variable and convert it into string and using firbase.post then data will be posted to databse of firebase
+    result = firebase.post('Ambiente', {'cTemp':temperature_c, 'cHum':humedad_c, 'cMov':movim_c,'time':str(time_hhmmss), 'date':str(date_mmddyyyy)})
+    #print('Record inserted. Result Code = ' + str(result.status_code) + ',' + result.text)
+    time.sleep(fixed_interval)
+  except IOError:
+    print('Error! Something went wrong.')
+  except mysql.connector.Error as error :
+        connection.rollback()
+        print("Failed to insert into MySQL table {}".format(error))
+  
+time.sleep(fixed_interval)
